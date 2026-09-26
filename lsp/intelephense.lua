@@ -1,5 +1,10 @@
--- Só formatação. Completion, diagnóstico, definição etc. ficam com o phpactor, sem duplicar.
-local keep = { documentFormattingProvider = true, documentRangeFormattingProvider = true, textDocumentSync = true }
+-- Completion e formatação. Os demais recursos ficam com o phpactor.
+local keep = {
+  completionProvider = true,
+  documentFormattingProvider = true,
+  documentRangeFormattingProvider = true,
+  textDocumentSync = true,
+}
 
 return {
   cmd = { "intelephense", "--stdio" },
