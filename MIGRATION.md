@@ -18,8 +18,8 @@ Antes era syntax regex (~20 ms por buffer PHP), sem parser treesitter.
 
 - **Gerenciador**: lazy.nvim → `vim.pack`. Versione o `nvim-pack-lock.json`.
   Atualizar: `:lua vim.pack.update()` (confirma com `:w`). Remover: `:lua vim.pack.del({ "nome" })`.
-- **LSP**: nvim-lspconfig + mason → `vim.lsp.enable()` + `lsp/<servidor>.lua`, binários do pacman.
-  PHP agora é **phpactor**, que só anexa dentro de um projeto (`composer.json`, `.phpactor.json` ou `.git`).
+- **LSP**: nvim-lspconfig + mason → `vim.lsp.enable()` + `lsp/<servidor>.lua`, binários do sistema.
+  PHP usa somente **Intelephense** para conclusão, diagnósticos, navegação e formatação.
 - **Completion**: blink.cmp → nativo. Em buffers com LSP ela abre a cada tecla (`vim.lsp.completion`);
   nos outros, completa palavras dos buffers (`'autocomplete'`).
   `<C-n>`/`<C-p>` navegam, `<CR>` aceita o item selecionado, `<C-y>` sempre aceita, `<C-Space>` força o LSP.
@@ -48,7 +48,7 @@ grug-far, todo-comments, persistence, nvim-lint, ts-comments, nvim-ts-autotag, n
 mini.{ai,pairs,icons,animate,hipatterns}, nvim-web-devicons, smear-cursor, catppuccin.
 
 Também saíram:
-- `<leader>ll`, que já estava quebrado. O phpactor gera getters/setters via `gra`.
+- `<leader>ll`, que já estava quebrado. Ações de código do Intelephense exigem licença Premium.
 - Os snippets PHP com LuaSnip, que nunca carregavam.
 - Autopairs.
 - Fechamento automático de tags HTML.
@@ -64,9 +64,8 @@ sudo pacman -S typescript-language-server vue-language-server vscode-html-langua
   pyright bash-language-server marksman prettier shfmt shellcheck python-isort
 ```
 
-- **Formatação PHP**: fica com o intelephense (`paru -S nodejs-intelephense`, AUR). Ele sobe junto com o phpactor,
-  mas com todas as capacidades cortadas menos formatação (`lsp/intelephense.lua`), e o diagnóstico dele fica desligado.
-  Ele ainda indexa o projeto em segundo plano; se pesar, troque por `php-cs-fixer` no conform.
+- **PHP**: Intelephense (`paru -S nodejs-intelephense`, AUR) é o único LSP, com todas as capacidades disponíveis.
+  Renomeação e ações de código exigem licença Premium. Ele indexa o projeto em segundo plano.
 - **lua_ls com duplicatas**: `callSnippet = "Both"` (herdado) mostra cada função duas vezes no menu.
   `"Replace"` deixa só a versão snippet.
 - **Versionar**: `~/.config/nvim-min` ainda não é um repositório git.

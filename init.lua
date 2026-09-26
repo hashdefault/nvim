@@ -150,7 +150,7 @@ require("oil").setup({ columns = {}, keymaps = { ["<C-t>"] = "actions.close" } }
 -- LSP ----------------------------------------------------------------------
 -- Configs em lsp/<nome>.lua. Servidor sem binário instalado é ignorado (só vai pro lsp.log).
 vim.lsp.enable({
-  "bashls", "html", "intelephense", "lua_ls", "marksman", "phpactor", "pyright", "rust_analyzer", "ts_ls", "vue_ls",
+  "bashls", "html", "intelephense", "lua_ls", "marksman", "pyright", "rust_analyzer", "ts_ls", "vue_ls",
 })
 
 vim.diagnostic.config({
