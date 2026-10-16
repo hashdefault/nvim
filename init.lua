@@ -41,10 +41,13 @@ opt.winborder = "rounded"
 opt.pumborder = "rounded"
 -- O padrão do 0.12 é "rg --vimgrep -uu", que inclui arquivos ignorados pelo git
 opt.grepprg = "rg --vimgrep --smart-case"
--- Sem LSP: autocomplete nativo com palavras dos buffers. Com LSP: ver LspAttach abaixo.
+-- Autocomplete nativo: "o" pede ao omnifunc (o LSP, quando anexado) e soma as palavras dos buffers
 opt.autocomplete = true
-opt.complete = ".^5,w^5,b^5"
+opt.complete = "o,.^5,w^5,b^5"
 opt.completeopt = "menuone,noselect,popup,fuzzy"
+-- Autocomplete na linha de comando (:find, :b, :Grep...). Ver "Pickers" abaixo.
+opt.wildmode = "noselect:lastused,full"
+opt.wildoptions = "pum,fuzzy"
 
 -- Plugins ------------------------------------------------------------------
 vim.api.nvim_create_autocmd("PackChanged", {
@@ -66,10 +69,7 @@ local gh = function(repo) return "https://github.com/" .. repo end
 vim.pack.add({
   gh("folke/tokyonight.nvim"),
   { src = gh("nvim-treesitter/nvim-treesitter"), version = "main" },
-  gh("ibhagwan/fzf-lua"),
-  gh("stevearc/conform.nvim"),
   gh("lewis6991/gitsigns.nvim"),
-  gh("stevearc/oil.nvim"),
 }, { confirm = false })
 -- vimwiki custa ~5 ms no startup: fica no lockfile, mas só carrega ao abrir .md ou pelos atalhos
 vim.pack.add({ gh("vimwiki/vimwiki") }, { confirm = false, load = function() end })
@@ -104,32 +104,89 @@ vim.api.nvim_create_autocmd("FileType", {
   end,
 })
 
--- fzf-lua custa ~7 ms para carregar: só sobe no primeiro uso (atalho ou vim.ui.select)
-local function fzf()
-  local f = require("fzf-lua")
-  if not vim.g.fzf_ready then
-    f.setup({ defaults = { file_icons = false } })
-    f.register_ui_select()
-    vim.g.fzf_ready = true
-  end
-  return f
-end
-vim.ui.select = function(...) return fzf() and vim.ui.select(...) end
+-- Formatação (substitui o conform) -------------------------------------------
+-- O buffer passa pela stdin de cada comando, em ordem; "%f" vira o caminho do arquivo.
+-- Filetype fora da lista ou sem binário instalado cai no LSP: o intelephense formata PHP e o
+-- rust-analyzer chama o rustfmt com a edition do Cargo.toml.
+local prettier = { { "prettier", "--stdin-filepath", "%f" } }
+local shfmt = { { "shfmt", "--filename", "%f" } }
+local formatters = {
+  lua = { { "stylua", "--search-parent-directories", "--stdin-filepath", "%f", "-" } },
+  python = { { "isort", "--stdout", "--filename", "%f", "-" }, { "black", "--quiet", "--stdin-filename", "%f", "-" } },
+  sh = shfmt, bash = shfmt,
+  javascript = prettier, javascriptreact = prettier, typescript = prettier, typescriptreact = prettier,
+  vue = prettier, html = prettier, css = prettier, json = prettier, yaml = prettier, markdown = prettier,
+}
 
-local prettier = { "prettier" }
-require("conform").setup({
-  formatters_by_ft = {
-    lua = { "stylua" },
-    python = { "isort", "black" },
-    -- Sem formatador externo: cai no LSP, e só o intelephense formata PHP
-    php = { lsp_format = "prefer" },
-    rust = { "rustfmt" },
-    sh = { "shfmt" },
-    bash = { "shfmt" },
-    javascript = prettier, javascriptreact = prettier, typescript = prettier, typescriptreact = prettier,
-    vue = prettier, html = prettier, css = prettier, json = prettier, yaml = prettier, markdown = prettier,
-  },
-  default_format_opts = { lsp_format = "fallback", timeout_ms = 1000 },
+local function format()
+  local buf = vim.api.nvim_get_current_buf()
+  local cmds = vim.tbl_filter(function(c) return vim.fn.executable(c[1]) == 1 end, formatters[vim.bo.filetype] or {})
+  -- Seleção visual sempre vai pro LSP (os formatadores externos só formatam o arquivo inteiro)
+  if #cmds == 0 or vim.fn.mode():find("^[vV\22]") then return vim.lsp.buf.format({ timeout_ms = 1000 }) end
+
+  local file = vim.api.nvim_buf_get_name(buf)
+  local old = table.concat(vim.api.nvim_buf_get_lines(buf, 0, -1, false), "\n") .. "\n"
+  local text = old
+  for _, cmd in ipairs(cmds) do
+    cmd = vim.tbl_map(function(a) return a == "%f" and file or a end, cmd)
+    local res = vim.system(cmd, { stdin = text, cwd = file ~= "" and vim.fs.dirname(file) or nil }):wait(2000)
+    if res.code ~= 0 then
+      return vim.notify(cmd[1] .. ": " .. vim.trim(res.stderr or "timeout"), vim.log.levels.ERROR)
+    end
+    text = res.stdout
+  end
+
+  -- Aplica só os trechos que mudaram: cursor, marks e folds ficam onde estavam
+  local new = vim.split(text, "\n")
+  table.remove(new)
+  local hunks = vim.text.diff(old, text, { result_type = "indices" }) --[[@as integer[][] ]]
+  for i = #hunks, 1, -1 do
+    local sa, ca, sb, cb = unpack(hunks[i])
+    local start = ca == 0 and sa or sa - 1
+    vim.api.nvim_buf_set_lines(buf, start, start + ca, false, vim.list_slice(new, sb, sb + cb - 1))
+  end
+end
+
+-- Pickers (substituem o fzf-lua) ----------------------------------------------
+-- A linha de comando abre o menu sozinha a cada tecla (wildtrigger) e filtra com fuzzy.
+-- :find usa o rg (respeita .gitignore); a lista é refeita a cada vez que entra na linha de comando.
+local files
+function _G.find_files(arg)
+  files = files or vim.fn.systemlist({ "rg", "--files", "--hidden", "--glob", "!.git" })
+  return arg == "" and files or vim.fn.matchfuzzy(files, arg)
+end
+opt.findfunc = "v:lua.find_files"
+
+vim.api.nvim_create_user_command("Recent", function(o) vim.cmd.edit(o.args) end, {
+  nargs = 1,
+  complete = function(arg)
+    local recent = vim.tbl_filter(function(f) return vim.fn.filereadable(f) == 1 end, vim.v.oldfiles)
+    recent = vim.tbl_map(function(f) return vim.fn.fnamemodify(f, ":~:.") end, recent)
+    return arg == "" and recent or vim.fn.matchfuzzy(recent, arg)
+  end,
+})
+
+-- Live grep: o menu mostra as linhas do rg enquanto digita. <CR> com uma linha selecionada pula
+-- pra ela; sem seleção joga todos os resultados no quickfix.
+local grep_pick
+vim.api.nvim_create_user_command("Grep", function(o)
+  if grep_pick then
+    local item = vim.fn.getqflist({ lines = { grep_pick }, efm = vim.o.grepformat }).items[1]
+    grep_pick = nil
+    vim.cmd.buffer(item.bufnr)
+    vim.bo.buflisted = true
+    vim.api.nvim_win_set_cursor(0, { item.lnum, item.col - 1 })
+  else
+    vim.cmd("silent grep! " .. vim.fn.shellescape(o.args))
+    vim.cmd("botright cwindow")
+  end
+end, {
+  nargs = "+",
+  complete = function(_, cmdline)
+    local pattern = cmdline:match("^%s*Grep%s+(.*)")
+    if not pattern or #pattern < 2 then return {} end
+    return vim.list_slice(vim.fn.systemlist(vim.o.grepprg .. " -- " .. vim.fn.shellescape(pattern)), 1, 300)
+  end,
 })
 
 require("gitsigns").setup({
@@ -145,8 +202,8 @@ require("gitsigns").setup({
   end,
 })
 
--- Sem plugin de ícones a coluna "icon" não existe. <C-t> dentro do oil fecha (toggle).
-require("oil").setup({ columns = {}, keymaps = { ["<C-t>"] = "actions.close" } })
+-- Explorer: netrw nativo (substitui o oil). <C-t> abre e, dentro dele, volta pro arquivo.
+vim.g.netrw_banner = 0
 
 -- LSP ----------------------------------------------------------------------
 -- Configs em lsp/<nome>.lua. Servidor sem binário instalado é ignorado (só vai pro lsp.log).
@@ -170,18 +227,12 @@ vim.diagnostic.config({
   },
 })
 
-local word_chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_"
 vim.api.nvim_create_autocmd("LspAttach", {
   callback = function(ev)
     local client = assert(vim.lsp.get_client_by_id(ev.data.client_id))
     if not client:supports_method("textDocument/completion") then return end
-    -- O autotrigger só dispara nos triggerCharacters do servidor; somar letras faz abrir a cada tecla
-    local provider = client.server_capabilities.completionProvider
-    provider.triggerCharacters = provider.triggerCharacters or {}
-    if not vim.tbl_contains(provider.triggerCharacters, "a") then
-      vim.list_extend(provider.triggerCharacters, vim.split(word_chars, ""))
-    end
-    vim.bo[ev.buf].autocomplete = false
+    -- As letras já chegam ao LSP pelo "o" do 'complete'. O enable() aplica snippets e imports no <C-y>,
+    -- e o autotrigger abre o menu nos triggerCharacters do servidor ("." ":" ...), que não são letras.
     vim.lsp.completion.enable(true, client.id, ev.buf, { autotrigger = true })
   end,
 })
@@ -223,12 +274,12 @@ vim.o.statusline = vim.o.statusline:gsub("%%=", "%%{v:lua.stl_git()}%%=%%{v:lua.
 
 -- Keymaps ------------------------------------------------------------------
 local map = vim.keymap.set
-map("n", "<C-t>", function() require("oil").toggle_float() end, { desc = "Explorer (oil)" })
+map("n", "<C-t>", function() vim.cmd(vim.bo.filetype == "netrw" and "silent! Rexplore" or "Explore") end, { desc = "Explorer (netrw)" })
 map("n", "<leader>e", vim.diagnostic.open_float, { desc = "Diagnóstico da linha" })
 map("n", "<C-j>", function() vim.diagnostic.jump({ count = 1 }) end, { desc = "Próximo diagnóstico" })
 map("n", "<C-k>", function() vim.diagnostic.jump({ count = -1 }) end, { desc = "Diagnóstico anterior" })
 map("n", "gd", vim.lsp.buf.definition, { desc = "Definição" })
-map({ "n", "v" }, "<leader>fm", function() require("conform").format() end, { desc = "Formatar arquivo/seleção" })
+map({ "n", "v" }, "<leader>fm", format, { desc = "Formatar arquivo/seleção" })
 
 map("n", "dw", 'vb"_d', { desc = "Apagar palavra para trás" })
 map("n", "<C-a>", "gg<S-v>G", { desc = "Selecionar tudo" })
@@ -244,13 +295,16 @@ map("n", "<S-Tab>", "gT", { desc = "Aba anterior" })
 -- Herdados do LazyVim
 map("n", "<leader>ww", function() vimwiki(); vim.cmd("VimwikiIndex") end, { desc = "Wiki" })
 map("n", "<leader>wt", function() vimwiki(); vim.cmd("VimwikiTabIndex") end, { desc = "Wiki em nova aba" })
-map("n", "<leader><space>", function() fzf().files() end, { desc = "Arquivos" })
-map("n", "<leader>ff", function() fzf().files() end, { desc = "Arquivos" })
-map("n", "<leader>/", function() fzf().live_grep() end, { desc = "Grep" })
-map("n", "<leader>sg", function() fzf().live_grep() end, { desc = "Grep" })
-map("n", "<leader>,", function() fzf().buffers() end, { desc = "Buffers" })
-map("n", "<leader>fr", function() fzf().oldfiles() end, { desc = "Recentes" })
-map("n", "<leader>:", function() fzf().command_history() end, { desc = "Histórico de comandos" })
+map("n", "<leader><space>", ":find ", { desc = "Arquivos" })
+map("n", "<leader>ff", ":find ", { desc = "Arquivos" })
+map("n", "<leader>/", ":Grep ", { desc = "Grep" })
+map("n", "<leader>sg", ":Grep ", { desc = "Grep" })
+map("n", "<leader>,", ":b ", { desc = "Buffers" })
+map("n", "<leader>fr", ":Recent ", { desc = "Recentes" })
+map("n", "<leader>:", "q:", { desc = "Histórico de comandos" })
+-- Com o menu da linha de comando aberto, <Up>/<Down> continuam navegando no histórico
+map("c", "<Up>", function() return vim.fn.wildmenumode() == 1 and "<C-e><Up>" or "<Up>" end, { expr = true })
+map("c", "<Down>", function() return vim.fn.wildmenumode() == 1 and "<C-e><Down>" or "<Down>" end, { expr = true })
 map("n", "<C-h>", "<C-w>h", { desc = "Janela à esquerda" })
 map("n", "<C-l>", "<C-w>l", { desc = "Janela à direita" })
 -- Só n/x/s: no insert o <C-s> fica com o padrão nativo (assinatura do LSP)
@@ -276,6 +330,32 @@ map("i", "<C-Space>", function() vim.lsp.completion.get() end, { desc = "Complet
 -- Autocmds -----------------------------------------------------------------
 local au = vim.api.nvim_create_autocmd
 au("TextYankPost", { callback = function() vim.hl.on_yank() end })
+au("CmdlineEnter", { pattern = ":", callback = function() files = nil end })
+au("CmdlineChanged", { pattern = ":", callback = function() vim.fn.wildtrigger() end })
+au("CmdlineLeavePre", {
+  pattern = ":",
+  desc = "<CR> sem seleção no :find/:b/:Recent abre o primeiro item; no :Grep guarda a linha escolhida",
+  callback = function()
+    local info = vim.fn.cmdcomplete_info()
+    if vim.tbl_isempty(info.matches or {}) then return end
+    local line = vim.fn.getcmdline()
+    local verb = line:match("^%s*(fin?d?)%s") or line:match("^%s*(b)%s") or line:match("^%s*(Recent)%s")
+    if verb and info.selected == -1 then
+      vim.fn.setcmdline(verb .. " " .. info.matches[1])
+    elseif line:match("^%s*Grep%s") and info.selected ~= -1 then
+      grep_pick = info.matches[info.selected + 1]
+      vim.fn.setcmdline(info.cmdline_orig)
+    end
+  end,
+})
+au("FileType", {
+  pattern = "netrw",
+  desc = "O netrw toma <C-h>/<C-l>: devolve a navegação entre janelas",
+  callback = function(ev)
+    map("n", "<C-h>", "<C-w>h", { buffer = ev.buf })
+    map("n", "<C-l>", "<C-w>l", { buffer = ev.buf })
+  end,
+})
 au("BufReadPost", {
   desc = "Volta para a última posição do cursor",
   callback = function(ev)
