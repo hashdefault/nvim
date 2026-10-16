@@ -41,9 +41,10 @@ opt.winborder = "rounded"
 opt.pumborder = "rounded"
 -- O padrão do 0.12 é "rg --vimgrep -uu", que inclui arquivos ignorados pelo git
 opt.grepprg = "rg --vimgrep --smart-case"
--- Autocomplete nativo: "o" pede ao omnifunc (o LSP, quando anexado) e soma as palavras dos buffers
+-- Autocomplete nativo: "F" pede ao LSP (lsp_complete, na seção LSP) e soma as palavras dos buffers
 opt.autocomplete = true
-opt.complete = "o,.^5,w^5,b^5"
+opt.complete = "F,.^5,w^5,b^5"
+opt.completefunc = "v:lua.lsp_complete"
 opt.completeopt = "menuone,noselect,popup,fuzzy"
 -- Autocomplete na linha de comando (:find, :b, :Grep...). Ver "Pickers" abaixo.
 opt.wildmode = "noselect:lastused,full"
@@ -236,13 +237,22 @@ vim.diagnostic.config({
   },
 })
 
+-- Fonte do LSP para o 'complete'. Uma fonte função é chamada a cada tecla, até depois de espaço,
+-- "(" ou "."; -3 cancela em silêncio, então o menu só abre com uma letra antes do cursor.
+function _G.lsp_complete(findstart, base)
+  if findstart == 1 and vim.fn.match(vim.api.nvim_get_current_line():sub(1, vim.fn.col(".") - 1), [[\k$]]) < 0 then
+    return -3
+  end
+  return vim.lsp.omnifunc(findstart, base)
+end
+
 vim.api.nvim_create_autocmd("LspAttach", {
   callback = function(ev)
     local client = assert(vim.lsp.get_client_by_id(ev.data.client_id))
     if not client:supports_method("textDocument/completion") then return end
-    -- As letras já chegam ao LSP pelo "o" do 'complete'. O enable() aplica snippets e imports no <C-y>,
-    -- e o autotrigger abre o menu nos triggerCharacters do servidor ("." ":" ...), que não são letras.
-    vim.lsp.completion.enable(true, client.id, ev.buf, { autotrigger = true })
+    -- Quem abre o menu é o 'autocomplete' (pelo lsp_complete). Sem autotrigger: os triggerCharacters do
+    -- lua_ls incluem espaço, "(", "=", ",". O enable() fica para aplicar snippets e imports no <C-y>.
+    vim.lsp.completion.enable(true, client.id, ev.buf)
   end,
 })
 
