@@ -67,7 +67,7 @@ vim.g.vimwiki_global_ext = 0
 
 local gh = function(repo) return "https://github.com/" .. repo end
 vim.pack.add({
-  gh("folke/tokyonight.nvim"),
+  gh("sainnhe/everforest"),
   { src = gh("nvim-treesitter/nvim-treesitter"), version = "main" },
   gh("lewis6991/gitsigns.nvim"),
 }, { confirm = false })
@@ -78,12 +78,21 @@ local function vimwiki()
 end
 vim.api.nvim_create_autocmd("BufReadPre", { pattern = "*.md", once = true, callback = vimwiki })
 
-require("tokyonight").setup({
-  style = "night",
-  transparent = true,
-  styles = { comments = { italic = false }, keywords = { italic = false }, functions = { italic = false } },
+-- Lidas pelo colors/everforest.vim: precisam vir antes do :colorscheme
+vim.g.everforest_background = "hard"
+vim.g.everforest_transparent_background = 1
+vim.g.everforest_disable_italic_comment = 1
+vim.g.everforest_float_style = "dim"
+-- Tema que não define PmenuBorder deixa o padrão (link pro Pmenu): a borda sai na cor do texto.
+-- Deriva do próprio tema ativo: cor da FloatBorder sobre o fundo do Pmenu.
+vim.api.nvim_create_autocmd("ColorScheme", {
+  callback = function()
+    local function get(name) return vim.api.nvim_get_hl(0, { name = name, link = false }) end
+    if vim.api.nvim_get_hl(0, { name = "PmenuBorder" }).link ~= "Pmenu" then return end
+    vim.api.nvim_set_hl(0, "PmenuBorder", { fg = get("FloatBorder").fg, bg = get("Pmenu").bg })
+  end,
 })
-vim.cmd.colorscheme("tokyonight")
+vim.cmd.colorscheme("everforest")
 
 -- lua, markdown, vim, vimdoc, query e c já vêm com o Neovim. install() é no-op se já instalado.
 vim.schedule(function()
