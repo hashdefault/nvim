@@ -434,6 +434,17 @@ end, { expr = true })
 map("c", "<Down>", function()
   return vim.fn.wildmenumode() == 1 and "<C-e><Down>" or "<Down>"
 end, { expr = true })
+map("c", "<C-v>", function()
+  local line = vim.fn.getcmdline()
+  if vim.fn.getcmdtype() ~= ":" or not line:match("^%s*fin?d?%s") then
+    return "<C-v>"
+  end
+  local info = vim.fn.cmdcomplete_info()
+  local selected = info.selected and info.selected >= 0 and info.selected + 1 or 1
+  local file = (info.matches or {})[selected]
+  local command = file and "sfind " .. vim.fn.fnameescape(file) or line:gsub("^(%s*)fin?d?(%s)", "%1sfind%2", 1)
+  return "<C-u>vertical " .. command .. "<CR>"
+end, { expr = true, desc = "Abrir resultado do :find em split vertical" })
 map("n", "<C-h>", "<C-w>h", { desc = "Janela à esquerda" })
 map("n", "<C-l>", "<C-w>l", { desc = "Janela à direita" })
 -- Só n/x/s: no insert o <C-s> fica com o padrão nativo (assinatura do LSP)
@@ -505,6 +516,15 @@ au("FileType", {
   callback = function(ev)
     map("n", "<C-h>", "<C-w>h", { buffer = ev.buf })
     map("n", "<C-l>", "<C-w>l", { buffer = ev.buf })
+    map("n", "<C-v>", function()
+      local explorer = vim.api.nvim_get_current_win()
+      local source = vim.w.netrw_rexfile
+      local buf = source and source ~= "" and vim.fn.bufnr(source) or -1
+      vim.cmd.normal("v")
+      if vim.api.nvim_get_current_win() ~= explorer and vim.bo.filetype ~= "netrw" and vim.api.nvim_buf_is_valid(buf) then
+        vim.api.nvim_win_set_buf(explorer, buf)
+      end
+    end, { buffer = ev.buf, desc = "Abrir arquivo em split vertical" })
   end,
 })
 au("BufReadPost", {
