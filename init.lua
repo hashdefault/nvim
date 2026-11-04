@@ -39,6 +39,20 @@ opt.foldtext = ""
 opt.pumheight = 10
 opt.winborder = "rounded"
 opt.pumborder = "rounded"
+-- Cmdline mínima: com cmdheight=0 a linha de baixo é a statusline global e a cmdline só aparece enquanto
+-- se digita. Showmode/ruler/showcmd vivem na cmdline, então ficam ocultos fora dela.
+opt.cmdheight = 0
+opt.laststatus = 3
+-- ui2 (experimental no 0.12): substitui o hit-enter por mensagens em janela flutuante efêmera.
+-- Mensagens comuns vão pra janela "msg" (somem em 4 s); saídas longas (:ls, :set, :!cmd) vão pro pager;
+-- "g<" reabre as últimas mensagens e "q" fecha o pager. Prompts (confirm) usam o dialog sozinho.
+require("vim._core.ui2").enable({
+  msg = {
+    target = "msg",
+    targets = { list_cmd = "pager", shell_out = "pager", shell_err = "pager" },
+    msg = { timeout = 4000 },
+  },
+})
 -- O padrão do 0.12 é "rg --vimgrep -uu", que inclui arquivos ignorados pelo git
 opt.grepprg = "rg --vimgrep --smart-case"
 -- Autocomplete nativo: "F" pede ao LSP (lsp_complete, na seção LSP) e soma as palavras dos buffers
@@ -81,7 +95,7 @@ vim.api.nvim_create_autocmd("BufReadPre", { pattern = "*.md", once = true, callb
 
 -- Lidas pelo colors/everforest.vim: precisam vir antes do :colorscheme
 vim.g.everforest_background = "hard"
-vim.g.everforest_transparent_background = 1
+vim.g.everforest_transparent_background = 0
 vim.g.everforest_disable_italic_comment = 1
 vim.g.everforest_float_style = "dim"
 -- Tema que não define PmenuBorder deixa o padrão (link pro Pmenu): a borda sai na cor do texto.
