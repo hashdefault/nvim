@@ -19,6 +19,7 @@ opt.signcolumn = "yes"
 opt.scrolloff = 10
 opt.list = true
 opt.pumheight = 10
+opt.pummaxwidth = 80 -- rede de segurança; os itens do LSP já chegam encurtados (completion.lua)
 opt.winborder = "bold"
 opt.pumborder = "bold"
 opt.splitright = true

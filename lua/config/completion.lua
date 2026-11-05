@@ -17,6 +17,23 @@ function M.lsp(findstart, base)
   return vim.lsp.omnifunc(findstart, base)
 end
 
+-- O 'pummaxwidth' corta a linha inteira pela direita e some com o tipo quando a assinatura é longa.
+-- Aqui o corte é por coluna: assinatura (abbr) e tipo (menu) encurtam com "…" e o kind fica sempre visível.
+local function truncate(text, max)
+  if vim.fn.strdisplaywidth(text) <= max then
+    return text
+  end
+  return vim.fn.strcharpart(text, 0, max - 1) .. "…"
+end
+
+local function convert(item)
+  local details = item.labelDetails or {}
+  return {
+    abbr = truncate(item.label .. (details.detail or ""), 40),
+    menu = truncate(details.description or item.detail or "", 20),
+  }
+end
+
 vim.api.nvim_create_autocmd("LspAttach", {
   callback = function(ev)
     local client = assert(vim.lsp.get_client_by_id(ev.data.client_id))
@@ -25,7 +42,7 @@ vim.api.nvim_create_autocmd("LspAttach", {
     end
     -- Quem abre o menu é o 'autocomplete' (pelo M.lsp). Sem autotrigger: os triggerCharacters do
     -- lua_ls incluem espaço, "(", "=", ",". O enable() fica para aplicar snippets e imports no <C-y>.
-    vim.lsp.completion.enable(true, client.id, ev.buf)
+    vim.lsp.completion.enable(true, client.id, ev.buf, { convert = convert })
   end,
 })
 
