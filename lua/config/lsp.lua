@@ -2,8 +2,11 @@
 -- A completion do LSP fica em completion.lua e a formatação em format.lua.
 vim.lsp.enable({
   "bashls",
+  "clangd",
+  "hls",
   "html",
   "intelephense",
+  "jdtls",
   "lua_ls",
   "marksman",
   "pyright",

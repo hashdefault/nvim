@@ -22,9 +22,12 @@ vim.pack.add({ { src = "https://github.com/nvim-treesitter/nvim-treesitter", ver
 vim.schedule(function()
   require("nvim-treesitter").install({
     "bash",
+    "cpp",
     "css",
     "diff",
+    "haskell",
     "html",
+    "java",
     "javascript",
     "jsdoc",
     "json",

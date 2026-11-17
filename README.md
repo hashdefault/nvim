@@ -16,7 +16,7 @@ Não é uma distribuição nem um projeto para ser reaproveitado. É só o meu `
 - `init.lua`: só carrega os módulos de `lua/config/`, na ordem
 - `lua/config/`: um módulo por assunto, cada um com as próprias opções, plugins (`vim.pack.add`), autocmds e atalhos
   - `options.lua`: opções gerais, cmdline e ui2
-  - `colors.lua`: tema (everforest)
+  - `colors.lua`: tema (eldritch)
   - `treesitter.lua`: parsers, highlight, folds e indentação (`:TSReinstall` refaz tudo)
   - `git.lua`: gitsigns e lazygit
   - `wiki.lua`: vimwiki, carregado só ao abrir `.md`
