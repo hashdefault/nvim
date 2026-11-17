@@ -29,10 +29,10 @@ opt.foldlevel = 99
 opt.foldtext = ""
 
 -- Texto e indentação
-opt.wrap = true
+opt.wrap = false 
 opt.linebreak = true
 opt.breakindent = true
-opt.textwidth = 180
+opt.textwidth = 120
 opt.expandtab = true
 opt.shiftwidth = 2
 opt.tabstop = 2
